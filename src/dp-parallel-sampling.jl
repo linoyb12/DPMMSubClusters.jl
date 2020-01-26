@@ -123,7 +123,8 @@ function dp_parallel(all_data::AbstractArray{Float32,2},
          gt = nothing,
          max_clusters = Inf,
          outlier_weight = 0,
-         outlier_params = nothing)
+         outlier_params = nothing,
+         conn_components = nothing)
     global iterations = iters
     global random_seed = seed
     global hyper_params = local_hyper_params
@@ -137,6 +138,7 @@ function dp_parallel(all_data::AbstractArray{Float32,2},
     global outlier_hyper_params = outlier_params
     dp_model = init_model_from_data(all_data)
     global leader_dict = get_node_leaders_dict()
+    global connected_components = conn_components
     init_first_clusters!(dp_model, initial_clusters)
     if use_verbose
         println("Node Leaders:")
@@ -203,8 +205,9 @@ julia> unique(ret_values[1])
 ```
 """
 function fit(all_data::AbstractArray{Float32,2},local_hyper_params::distribution_hyper_params,α_param::Float32;
-        iters::Int64 = 100, init_clusters::Int64 = 1,seed = nothing, verbose = true, save_model = false, burnout = 20, gt = nothing, max_clusters = Inf, outlier_weight = 0, outlier_params = nothing)
-        dp_model,iter_count , nmi_score_history, liklihood_history, cluster_count_history = dp_parallel(all_data, local_hyper_params,α_param,iters,init_clusters,seed,verbose, save_model,burnout,gt, max_clusters, outlier_weight, outlier_params)
+        iters::Int64 = 100, init_clusters::Int64 = 1,seed = nothing, verbose = true, save_model = false, burnout = 20, gt = nothing, max_clusters = Inf, outlier_weight = 0, outlier_params = nothing, conn_components = nothing)
+        # conn_components = npzread("./files/ConnectedComponents2.npy")
+        dp_model,iter_count , nmi_score_history, liklihood_history, cluster_count_history = dp_parallel(all_data, local_hyper_params,α_param,iters,init_clusters,seed,verbose, save_model,burnout,gt, max_clusters, outlier_weight, outlier_params, conn_components)
         return Array(dp_model.group.labels), [x.cluster_params.cluster_params.distribution for x in dp_model.group.local_clusters], dp_model.group.weights,iter_count , nmi_score_history, liklihood_history, cluster_count_history,Array(dp_model.group.labels_subcluster)
 end
 
@@ -276,10 +279,10 @@ fit(all_data::AbstractArray, α_param;
 fit(all_data::AbstractArray,local_hyper_params::distribution_hyper_params,α_param;
         iters = 100, init_clusters::Number = 1,
         seed = nothing, verbose = true,
-        save_model = false,burnout = 20, gt = nothing, max_clusters = Inf, outlier_weight = 0, outlier_params = nothing) =
+        save_model = false,burnout = 20, gt = nothing, max_clusters = Inf, outlier_weight = 0, outlier_params = nothing, conn_components = nothing) =
     fit(Float32.(all_data),local_hyper_params,Float32(α_param),iters = Int64(iters),
         init_clusters=Int64(init_clusters), seed = seed, verbose = verbose,
-        save_model = save_model, burnout = burnout, gt = gt, max_clusters = max_clusters, outlier_weight = outlier_weight, outlier_params = outlier_params)
+        save_model = save_model, burnout = burnout, gt = gt, max_clusters = max_clusters, outlier_weight = outlier_weight, outlier_params = outlier_params, conn_components = conn_components)
 
 
 

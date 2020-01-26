@@ -16,6 +16,41 @@ end
 
 
 # #Note that we expect the log_likelihood_array to be in rows (samples) x columns (clusters) , this is due to making it more efficent that way.
+function sample_log_cat_array!(labels::AbstractArray{Int64,1}, log_likelihood_array::AbstractArray{Float32,2}, conn_components::AbstractArray{Int64,1})
+    # println("lsample log cat" * string(log_likelihood_array))
+    row_mapping = Dict()
+    rows_counter = 1
+    for i=1:length(conn_components)
+        if !haskey(row_mapping, conn_components[i])
+            row_mapping[conn_components[i]] = rows_counter
+            rows_counter += 1
+        end
+    end
+
+    conn_components_count = rows_counter - 1
+    array = zeros(Float32,conn_components_count, size(log_likelihood_array)[2])
+    for i=1:length(conn_components)
+        array[row_mapping[conn_components[i]], :] .+= log_likelihood_array[i, :]
+    end
+
+    log_likelihood_array = array
+    log_likelihood_array[isnan.(log_likelihood_array)] .= -Inf #Numerical errors arent fun
+    max_log_prob_arr = maximum(log_likelihood_array, dims = 2)
+    log_likelihood_array .-= max_log_prob_arr
+    map!(exp,log_likelihood_array,log_likelihood_array)
+    # println("lsample log cat2" * string(log_likelihood_array))
+    sum_prob_arr = sum(log_likelihood_array, dims =[2])
+    log_likelihood_array ./=  sum_prob_arr
+    labels_connected_conponents = zeros(Int64, conn_components_count)
+    for i=1:length(labels_connected_conponents)
+        labels_connected_conponents[i] = sample(1:size(log_likelihood_array,2), ProbabilityWeights(log_likelihood_array[i,:]))
+    end
+    for i=1:length(labels)
+        label_index = row_mapping[conn_components[i]]
+        labels[i] = labels_connected_conponents[label_index]
+    end
+end
+
 function sample_log_cat_array!(labels::AbstractArray{Int64,1}, log_likelihood_array::AbstractArray{Float32,2})
     # println("lsample log cat" * string(log_likelihood_array))
     log_likelihood_array[isnan.(log_likelihood_array)] .= -Inf #Numerical errors arent fun
@@ -25,11 +60,34 @@ function sample_log_cat_array!(labels::AbstractArray{Int64,1}, log_likelihood_ar
     # println("lsample log cat2" * string(log_likelihood_array))
     sum_prob_arr = sum(log_likelihood_array, dims =[2])
     log_likelihood_array ./=  sum_prob_arr
+
     for i=1:length(labels)
         labels[i] = sample(1:size(log_likelihood_array,2), ProbabilityWeights(log_likelihood_array[i,:]))
     end
 end
 
+function hard_assignment_labels(log_likelihood_array::AbstractArray{Float32,2}, conn_components::AbstractArray{Int64,1})
+    row_mapping = Dict()
+    rows_counter = 1
+    for i=1:length(conn_components)
+        if !haskey(row_mapping, conn_components[i])
+            row_mapping[conn_components[i]] = rows_counter
+            rows_counter += 1
+        end
+    end
+
+    conn_components_count = rows_counter - 1
+    array = zeros(Float32,conn_components_count, size(log_likelihood_array)[2])
+    for i=1:length(conn_components)
+        array[row_mapping[conn_components[i]], :] .+= log_likelihood_array[i, :]
+    end
+
+    labels_connected_conponents .= mapslices(argmax, log_likelihood_array, dims= [2])[:]
+    for i=1:length(labels)
+        label_index = row_mapping[conn_components[i]]
+        labels[i] = labels_connected_conponents[label_index]
+    end
+end
 
 function create_sufficient_statistics(dist::distribution_hyper_params, pts::Array{Any,1})
     return create_sufficient_statistics(dist,dist, Array{Float32}(undef, 0, 0))

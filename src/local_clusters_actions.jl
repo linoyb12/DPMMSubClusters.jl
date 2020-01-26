@@ -54,12 +54,43 @@ function sample_sub_clusters_worker!(group_points, group_labels, group_labels_su
     labels = localpart(group_labels)
     sub_labels = localpart(group_labels_subcluster)
 
-    for (i,v) in enumerate(clusters_vector)
-        create_subclusters_labels!((@view sub_labels[labels .== i]),
-            (@view pts[:,labels .== i]), v)
+    if connected_components == nothing
+        for (i,v) in enumerate(clusters_vector)
+            create_subclusters_labels!((@view sub_labels[labels .== i]),
+                (@view pts[:,labels .== i]), v)
+        end
+    else
+        for (i,v) in enumerate(clusters_vector)
+            create_subclusters_labels!((@view sub_labels[labels .== i]),
+                (@view pts[:,labels .== i]), v, (@view connected_components[labels .== i]))
+        end
     end
 
 end
+
+function create_subclusters_labels!(labels::AbstractArray{Int64,1},
+        points::AbstractArray{Float32,2},
+        cluster_params::thin_cluster_params,
+        conn_components::AbstractArray{Int64,1})
+    if size(labels,1) == 0
+        return
+    end
+    # clusts_dist = [cluster_params.l_dist, cluster_params.r_dist]
+    # log_weights = log.(cluster_params.lr_weights)
+    # @inbounds for i=1:size(labels,1)
+    #     x = @view points[:,i]
+    #     probs = RestrictedClusterProbs(log_weights,clusts_dist,x)
+    #     labels[i] = sample(1:2, ProbabilityWeights(probs))
+    #     # println(labels[i])
+    # end
+    parr = zeros(Float32,length(labels), 2)
+    log_likelihood!((@view parr[:,1]),points,cluster_params.l_dist)
+    log_likelihood!((@view parr[:,2]),points,cluster_params.r_dist)
+    parr[:,1] .+= log(cluster_params.lr_weights[1])
+    parr[:,2] .+= log(cluster_params.lr_weights[2])
+    sample_log_cat_array!(labels,parr, conn_components)
+end
+
 
 function create_subclusters_labels!(labels::AbstractArray{Int64,1},
         points::AbstractArray{Float32,2},
@@ -139,10 +170,18 @@ function sample_labels_worker!(labels::AbstractArray{Int64,1},
         parr[:,k] .+= log(v)
     end
 
-    if final
-        lbls .= mapslices(argmax, parr, dims= [2])[:]
+    if connected_components == nothing
+        if final
+            lbls .= mapslices(argmax, parr, dims= [2])[:]
+        else
+            sample_log_cat_array!(lbls,parr)
+        end
     else
-        sample_log_cat_array!(lbls,parr)
+        if final
+            hard_assignment_labels(parr, connected_components)
+        else
+            sample_log_cat_array!(lbls,parr, connected_components)
+        end
     end
 
     # clust_dists = [c.cluster_dist for c in clusters_vector]
